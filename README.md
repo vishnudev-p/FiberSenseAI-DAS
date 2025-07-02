@@ -22,7 +22,7 @@ It identifies "shaker" vs "noise" events using a trained KNN classifier and visu
 
 > Sample dashboard output after uploading a DAS CSV file:
 
-![Output Screenshot](static/output.png)
+![Output Screenshot](Capture.png)
 
 ---
 
