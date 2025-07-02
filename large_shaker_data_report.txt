@@ -1,0 +1,14 @@
+=== Anomaly Detection Report for large_shaker_data ===
+Date: 2025-07-02 15:49:05 IST
+Total Anomalies Detected: 392533
+Spatial Analysis: Highest anomaly count at Channel Channel_121 with 12599 anomalies.
+Classification Summary:
+Predicted_Label
+noise     1317
+shaker      23
+Observations:
+- Anomalies detected above threshold may indicate shaker activity or noise.
+- Spatial distribution suggests the shaker may be near Channel Channel_121, pending validation.
+Recommendations:
+- Adjust threshold if fewer/more anomalies are expected.
+- Refine labels or retrain with new data for better accuracy.

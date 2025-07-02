@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DAS Anomaly Detector</title>
+    <style>
+        body { font-family: 'Arial', sans-serif; background-color: #2E2E2E; color: #E0E0E0; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: #3C3F41; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); }
+        .form-group { margin-bottom: 15px; display: flex; align-items: center; }
+        label { width: 150px; font-weight: bold; }
+        input[type="file"], input[type="number"] { padding: 8px; margin-left: 10px; background: #4A4A4A; border: none; color: #E0E0E0; border-radius: 5px; flex-grow: 1; }
+        input[type="number"] { width: 100px; }
+        button { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-left: 160px; }
+        button:hover { background-color: #45a049; }
+        #results { margin-top: 20px; }
+        pre { background: #4A4A4A; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+        #chartContainer { position: relative; height: 400px; margin-top: 10px; }
+        .loading { display: none; text-align: center; color: #4CAF50; font-weight: bold; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h2>DAS Anomaly Detector</h2>
+        <form id="uploadForm" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="file">Upload CSV:</label>
+                <input type="file" id="file" name="file" accept=".csv">
+            </div>
+            <div class="form-group">
+                <label for="sample_rate">Sample Rate (Hz):</label>
+                <input type="number" id="sample_rate" name="sample_rate" value="1000" min="1">
+            </div>
+            <div class="form-group">
+                <label for="threshold">Threshold:</label>
+                <input type="number" id="threshold" name="threshold" value="0.85" step="0.01" min="0" max="1">
+            </div>
+            <button type="submit">Run Analysis</button>
+        </form>
+        <div id="results">
+            <h3>Results:</h3>
+            <div id="loading" class="loading">Processing... Please wait.</div>
+            <pre id="report"></pre>
+            <div id="chartContainer"><canvas id="anomalyChart"></canvas></div>
+        </div>
+    </script>
+    <script>
+    const ctx = document.getElementById('anomalyChart').getContext('2d');
+    let chart = null;
+    let history = []; // Stack for undo/redo
+    let future = []; // Stack for redo
+
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        loading.style.display = 'block';
+        results.style.opacity = '0.5';
+
+        try {
+            const response = await fetch('/', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            if (data.error) {
+                alert(data.error);
+            } else {
+                document.getElementById('report').textContent = data.report;
+                if (chart) chart.destroy();
+                chart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.chart_data.labels,
+                        datasets: [{
+                            label: 'Number of Anomalies',
+                            data: data.chart_data.data,
+                            backgroundColor: '#4CAF50',
+                            borderColor: '#388E3C',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true }
+                        },
+                        plugins: {
+                            zoom: {
+                                pan: {
+                                    enabled: true,
+                                    mode: 'x',
+                                    onPan: (data) => saveState() // Save state on pan
+                                },
+                                zoom: {
+                                    wheel: {
+                                        enabled: true,
+                                        onZoom: (data) => saveState() // Save state on zoom
+                                    },
+                                    pinch: {
+                                        enabled: true,
+                                        onZoom: (data) => saveState()
+                                    },
+                                    mode: 'x'
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Add undo/redo buttons
+                let buttons = document.createElement('div');
+                buttons.innerHTML = `
+                    <button onclick="undo()" style="margin-right: 10px;">Undo</button>
+                    <button onclick="redo()">Redo</button>
+                `;
+                document.getElementById('chartContainer').appendChild(buttons);
+
+                alert(`Files saved at:\nCSV: ${data.csv_path}\nReport: ${data.report_path}\nPlot: ${data.plot_path}`);
+            }
+        } catch (error) {
+            alert('An error occurred: ' + error.message);
+        } finally {
+            loading.style.display = 'none';
+            results.style.opacity = '1';
+        }
+    });
+
+    function saveState() {
+        if (chart) {
+            const state = {
+                xMin: chart.scales.x.min,
+                xMax: chart.scales.x.max,
+                yMin: chart.scales.y.min,
+                yMax: chart.scales.y.max
+            };
+            history.push(state);
+            future = []; // Clear redo stack on new action
+        }
+    }
+
+    function undo() {
+        if (history.length > 1) { // Keep at least initial state
+            future.push(history.pop());
+            const state = history[history.length - 1];
+            chart.options.scales.x.min = state.xMin;
+            chart.options.scales.x.max = state.xMax;
+            chart.options.scales.y.min = state.yMin;
+            chart.options.scales.y.max = state.yMax;
+            chart.update();
+        }
+    }
+
+    function redo() {
+        if (future.length > 0) {
+            const state = future.pop();
+            history.push(state);
+            chart.options.scales.x.min = state.xMin;
+            chart.options.scales.x.max = state.xMax;
+            chart.options.scales.y.min = state.yMin;
+            chart.options.scales.y.max = state.yMax;
+            chart.update();
+        }
+    }
+</script>
+</body>
+</html>
